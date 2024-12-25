@@ -1,0 +1,120 @@
+---
+- name: Manage cAdvisor
+  hosts: cadvisor
+  become: true
+  
+  vars:
+    cadvisor_bin_dir: /usr/local/bin
+    cadvisor_conf_dir: /etc/cadvisor
+    cadvisor_log_dir: /var/log/cadvisor
+
+  tasks:
+    # 状态检查任务
+    - name: Check cAdvisor service status
+      systemd:
+        name: cadvisor
+        state: started
+      check_mode: yes
+      register: cadvisor_status
+      ignore_errors: yes
+      tags: 
+        - status
+        - check
+
+    - name: Display cAdvisor status
+      debug:
+        msg: 
+          - "服务状态: {{ cadvisor_status.status.ActiveState | default('未安装') }}"
+          - "运行状态: {{ cadvisor_status.status.SubState | default('未知') }}"
+          - "启动时间: {{ cadvisor_status.status.ActiveEnterTimestamp | default('未知') }}"
+      tags: 
+        - status
+        - check
+
+    # 安装任务
+    - name: Get system architecture
+      command: uname -m
+      register: system_arch
+      changed_when: false
+      tags: 
+        - install
+
+    - name: Set architecture specific variables
+      set_fact:
+        cadvisor_binary: "{{ 'cadvisor-amd64' if system_arch.stdout == 'x86_64' else 'cadvisor-arm64' }}"
+      tags: 
+        - install
+
+    - name: Create necessary directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ cadvisor_bin_dir }}"
+        - "{{ cadvisor_conf_dir }}"
+        - "{{ cadvisor_log_dir }}"
+      tags: 
+        - install
+
+    - name: Copy cAdvisor binary
+      copy:
+        src: "../files/{{ cadvisor_binary }}"
+        dest: "{{ cadvisor_bin_dir }}/cadvisor"
+        mode: '0755'
+      notify: Restart cAdvisor
+      tags: 
+        - install
+
+    - name: Create systemd service file
+      template:
+        src: ./../templates/cadvisor/cadvisor.service.j2
+        dest: /etc/systemd/system/cadvisor.service
+        mode: '0644'
+      notify: Restart cAdvisor
+      tags: 
+        - install
+
+    - name: Enable and start cAdvisor service
+      systemd:
+        name: cadvisor
+        state: started
+        enabled: yes
+        daemon_reload: yes
+      tags: 
+        - install
+
+    # 卸载任务
+    - name: Stop and disable cAdvisor service
+      systemd:
+        name: cadvisor
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      tags: 
+        - uninstall
+
+    - name: Remove cAdvisor files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ cadvisor_bin_dir }}/cadvisor"
+        - "{{ cadvisor_conf_dir }}"
+        - "{{ cadvisor_log_dir }}"
+        - "/etc/systemd/system/cadvisor.service"
+      tags: 
+        - uninstall
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+      tags: 
+        - uninstall
+
+  handlers:
+    - name: Restart cAdvisor
+      systemd:
+        name: cadvisor
+        state: restarted
+        daemon_reload: yes

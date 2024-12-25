@@ -1,0 +1,16 @@
+[Unit]
+Description=cAdvisor monitoring service
+Documentation=https://github.com/google/cadvisor
+After=network.target
+
+[Service]
+ExecStart={{ cadvisor_bin_dir }}/cadvisor \
+    --port=19882 \
+    --logtostderr \
+    --log_dir={{ cadvisor_log_dir }}
+Type=simple
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

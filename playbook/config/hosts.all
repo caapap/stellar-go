@@ -1,0 +1,9 @@
+[categraf]
+172.30.88.169 ansible_ssh_user=root ansible_ssh_pass=hgjl3000P&
+
+
+
+
+
+[cadvisor]
+172.30.88.169 ansible_ssh_user=root ansible_ssh_pass=hgjl3000P&

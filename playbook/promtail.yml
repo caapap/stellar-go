@@ -1,0 +1,139 @@
+---
+- name: Manage Promtail
+  hosts: promtail_machine
+  become: true
+  gather_facts: yes
+  
+  vars:
+    promtail_version: "v2.9.3"
+    promtail_base_dir: /iflytek/server
+    promtail_soft_dir: /iflytek/soft
+    stellar_ip: "{{ lookup('file', 'config/stellar_ip.txt') }}"
+
+  tasks:
+    # 状态检查任务
+    - name: Check Promtail service status
+      systemd:
+        name: promtail
+        state: started
+      check_mode: yes
+      register: promtail_status
+      ignore_errors: yes
+      tags: 
+        - status
+        - check
+
+    - name: Display Promtail status
+      debug:
+        msg: 
+          - "服务状态: {{ promtail_status.status.ActiveState | default('未安装') }}"
+          - "运行状态: {{ promtail_status.status.SubState | default('未知') }}"
+          - "启动时间: {{ promtail_status.status.ActiveEnterTimestamp | default('未知') }}"
+      tags: 
+        - status
+        - check
+
+    # 安装任务
+    - name: Get system architecture
+      set_fact:
+        arch_type: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+      tags:
+        - install
+        - check
+        - uninstall
+
+    - name: Set installation variables
+      set_fact:
+        promtail_package: "promtail-{{ promtail_version }}-linux-{{ arch_type }}.tar.gz"
+        promtail_dir: "{{ promtail_base_dir }}/promtail-{{ promtail_version }}-linux-{{ arch_type }}"
+      tags:
+        - install
+        - uninstall
+
+    - name: Create necessary directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ promtail_base_dir }}"
+        - "{{ promtail_soft_dir }}"
+      tags:
+        - install
+
+    - name: Copy Promtail package
+      copy:
+        src: "{{ promtail_package }}"
+        dest: "{{ promtail_soft_dir }}/{{ promtail_package }}"
+      tags:
+        - install
+
+    - name: Extract Promtail package
+      unarchive:
+        src: "{{ promtail_soft_dir }}/{{ promtail_package }}"
+        dest: "{{ promtail_base_dir }}"
+        remote_src: yes
+        creates: "{{ promtail_dir }}"
+      tags:
+        - install
+
+    - name: Configure Promtail
+      template:
+        src: ../templates/promtail/promtail-local-config.yaml.j2
+        dest: "{{ promtail_dir }}/conf/promtail-local-config.yaml"
+      notify: Restart Promtail
+      tags:
+        - install
+        - configure
+
+    - name: Create systemd service
+      template:
+        src: promtail/promtail.service.j2
+        dest: /etc/systemd/system/promtail.service
+        mode: '0644'
+      notify: Restart Promtail
+      tags:
+        - install
+
+    - name: Enable and start Promtail service
+      systemd:
+        name: promtail
+        state: started
+        enabled: yes
+        daemon_reload: yes
+      tags:
+        - install
+
+    # 卸载任务
+    - name: Stop and disable Promtail service
+      systemd:
+        name: promtail
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      tags:
+        - uninstall
+
+    - name: Remove Promtail files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ promtail_dir }}"
+        - "{{ promtail_soft_dir }}/{{ promtail_package }}"
+        - "/etc/systemd/system/promtail.service"
+      tags:
+        - uninstall
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+      tags:
+        - uninstall
+
+  handlers:
+    - name: Restart Promtail
+      systemd:
+        name: promtail
+        state: restarted
+        daemon_reload: yes

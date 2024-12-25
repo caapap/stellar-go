@@ -1,0 +1,11 @@
+[categraf_machine]
+#172.30.137.171 ansible_ssh_user=root ansible_ssh_pass=Spark@123
+#172.30.137.166 ansible_ssh_user=root ansible_ssh_pass=Spark@123
+#172.30.137.169 ansible_ssh_user=root ansible_ssh_pass=Spark@123
+172.31.101.239 ansible_ssh_user=root ansible_ssh_pass=Spark@123
+
+
+[promtail_machine]
+#172.30.137.166 ansible_ssh_user=root ansible_ssh_pass=Spark@123
+#172.30.137.169 ansible_ssh_user=root ansible_ssh_pass=Spark@123
+#172.30.137.171 ansible_ssh_user=root ansible_ssh_pass=Spark@123

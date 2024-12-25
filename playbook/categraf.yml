@@ -1,0 +1,139 @@
+---
+- name: Manage Categraf
+  hosts: categraf_machine
+  become: true
+  gather_facts: yes
+  
+  vars:
+    categraf_version: "v0.3.82"
+    categraf_base_dir: /iflytek/server
+    categraf_soft_dir: /iflytek/soft
+    stellar_ip: "{{ lookup('file', 'config/stellar_ip.txt') }}"
+
+  tasks:
+    # 状态检查任务
+    - name: Check Categraf service status
+      systemd:
+        name: categraf
+        state: started
+      check_mode: yes
+      register: categraf_status
+      ignore_errors: yes
+      tags: 
+        - status
+        - check
+
+    - name: Display Categraf status
+      debug:
+        msg: 
+          - "服务状态: {{ categraf_status.status.ActiveState | default('未安装') }}"
+          - "运行状态: {{ categraf_status.status.SubState | default('未知') }}"
+          - "启动时间: {{ categraf_status.status.ActiveEnterTimestamp | default('未知') }}"
+      tags: 
+        - status
+        - check
+
+    # 安装任务
+    - name: Get system architecture
+      set_fact:
+        arch_type: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+      tags:
+        - install
+        - check
+        - uninstall
+
+    - name: Set installation variables
+      set_fact:
+        categraf_package: "categraf-{{ categraf_version }}-linux-{{ arch_type }}.tar.gz"
+        categraf_dir: "{{ categraf_base_dir }}/categraf-{{ categraf_version }}-linux-{{ arch_type }}"
+      tags:
+        - install
+        - uninstall
+
+    - name: Create necessary directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ categraf_base_dir }}"
+        - "{{ categraf_soft_dir }}"
+      tags:
+        - install
+
+    - name: Copy Categraf package
+      copy:
+        src: "{{ categraf_package }}"
+        dest: "{{ categraf_soft_dir }}/{{ categraf_package }}"
+      tags:
+        - install
+
+    - name: Extract Categraf package
+      unarchive:
+        src: "{{ categraf_soft_dir }}/{{ categraf_package }}"
+        dest: "{{ categraf_base_dir }}"
+        remote_src: yes
+        creates: "{{ categraf_dir }}"
+      tags:
+        - install
+
+    - name: Configure Categraf
+      template:
+        src: ../templates/categraf/config.toml.j2
+        dest: "{{ categraf_dir }}/conf/config.toml"
+      notify: Restart Categraf
+      tags:
+        - install
+        - configure
+
+    - name: Create systemd service
+      template:
+        src: categraf/categraf.service.j2
+        dest: /etc/systemd/system/categraf.service
+        mode: '0644'
+      notify: Restart Categraf
+      tags:
+        - install
+
+    - name: Enable and start Categraf service
+      systemd:
+        name: categraf
+        state: started
+        enabled: yes
+        daemon_reload: yes
+      tags:
+        - install
+
+    # 卸载任务
+    - name: Stop and disable Categraf service
+      systemd:
+        name: categraf
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      tags:
+        - uninstall
+
+    - name: Remove Categraf files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ categraf_dir }}"
+        - "{{ categraf_soft_dir }}/{{ categraf_package }}"
+        - "/etc/systemd/system/categraf.service"
+      tags:
+        - uninstall
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+      tags:
+        - uninstall
+
+  handlers:
+    - name: Restart Categraf
+      systemd:
+        name: categraf
+        state: restarted
+        daemon_reload: yes

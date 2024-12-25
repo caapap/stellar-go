@@ -1,0 +1,52 @@
+server:
+  http_listen_port: 3101
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://{{ stellar_ip }}:31001/loki/api/v1/push
+
+scrape_configs:
+#配置采集linux系统服务日志
+  - job_name: journal
+    journal:
+      json: false
+      labels:
+        job: systemd-journal
+    relabel_configs:
+      - source_labels: [__journal__systemd_unit]
+        target_label: unit
+      - source_labels: [__journal__hostname]
+        target_label: node_name
+#配置采集skynet服务日志
+  - job_name: skynet-server
+    file_sd_configs:
+      - files:
+          - conf/target_skynet.json
+    relabel_configs:
+      - source_labels: [__meta_filepath]
+        regex: conf/(.+)\.json
+        target_label: target_name
+        replacement: $1
+      - target_label: node_name
+        replacement: ${HOSTNAME}
+      #- source_labels: [__PATH__]
+      #  regex: /iflytek/server/skynet/log/(.*)/(.+)\.log
+      #  target_label: app
+      #  replacement: $2
+
+
+#配置采集星云平台日志
+  - job_name: ddp-server
+    file_sd_configs:
+      - files:
+        - conf/target_ddp.json
+    relabel_configs:
+      - source_labels: [__meta_filepath]
+        regex: conf/(.+)\.json
+        target_label: target_name
+        replacement: $1
+      - target_label: node_name
+        replacement: ${HOSTNAME}

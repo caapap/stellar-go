@@ -1,0 +1,11 @@
+# 忽略整个 ansible_install 文件夹
+ansible_install/
+
+# 忽略 playbook 下的特定目录
+playbook/files/*
+playbook/rpm/*
+
+# 常见的系统文件
+.DS_Store
+*.log
+*.tmp
